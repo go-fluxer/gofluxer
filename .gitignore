@@ -1,0 +1,12 @@
+.vscode/
+test/
+examples/
+go.work
+go.work.sum
+test.yaml
+.env
+*.log
+*.zip
+*.rar
+*.tar.gz
+*.jar
