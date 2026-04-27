@@ -38,7 +38,7 @@ func (b *Bot) AddCommand(name string, handler func(m *Message, args []string)) {
 
 func (b *Bot) checkRateLimit(statusCode int) {
 	if statusCode == http.StatusTooManyRequests {
-		fmt.Println("[gofluxer] API returned a status 429 rate limit. Stopping process.")
+		fmt.Println("[gofluxer]: API returned a status 429 rate limit. Stopping process.")
 		os.Exit(1)
 	}
 }
@@ -111,11 +111,16 @@ func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 }
 
 func (b *Bot) Run() error {
+	fmt.Println("[gofluxer]: Attempting to connect to Fluxer Gateway...")
+
 	conn, _, err := websocket.DefaultDialer.Dial("wss://gateway.fluxer.app/?v=1", nil)
 	if err != nil {
-		return err
+		fmt.Printf("[gofluxer]: Connection failed: %v. Retrying in 5 seconds...\n", err)
+		time.Sleep(5 * time.Second)
+		continue
 	}
 	b.Conn = conn
+	fmt.Println("[gofluxer]: Connected to Fluxer")
 	defer conn.Close()
 
 	for {
@@ -187,7 +192,16 @@ func (b *Bot) identify() {
 
 func (b *Bot) heartbeat(interval time.Duration) {
 	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	currentConn := b.Conn
+
 	for range ticker.C {
-		b.Conn.WriteJSON(map[string]interface{}{"op": 1, "d": nil})
+		if b.Conn != currentConn {
+			return
+		}
+		err := b.Conn.WriteJSON(map[string]interface{}{"op": 1, "d": nil})
+		if err != nil {
+			return
+		}
 	}
 }

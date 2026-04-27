@@ -62,6 +62,11 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.1.1 - April 26th, 2026
+
+- gofluxer will now try to reconnect if connection to fluxer has dropped.
+- Updated heartbeat to fix a potiental issue where data could still try to be sent to closed connections.
+
 ### Version 0.1.0 - April 15th, 2026
 
 - The first early release version of gofluxer.
