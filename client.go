@@ -12,9 +12,15 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	DefaultBaseURL    = "https://api.fluxer.app/v1"
+	DefaultGatewayURL = "wss://gateway.fluxer.app/?v=1"
+)
 type Bot struct {
 	Token         string
 	CommandPrefix string
+	BaseURL       string
+	GatewayURL    string
 	Handlers      []func(m *Message)
 	Commands      map[string]func(m *Message, args []string)
 	Conn          *websocket.Conn
@@ -24,9 +30,17 @@ func NewBot(token, prefix string) *Bot {
 	return &Bot{
 		Token:         token,
 		CommandPrefix: prefix,
+		BaseURL:       DefaultBaseURL,
+		GatewayURL:    DefaultGatewayURL,
 		Commands:      make(map[string]func(m *Message, args []string)),
 	}
 }
+func (b *Bot) NewBotInstance(apiBase, gatewayURL string) {
+	b.BaseURL = apiBase
+	b.GatewayURL = gatewayURL
+}
+
+
 
 func (b *Bot) OnMessage(handler func(m *Message)) {
 	b.Handlers = append(b.Handlers, handler)
@@ -48,7 +62,7 @@ func (b *Bot) IsOwner(m *Message) bool {
 		return false
 	}
 
-	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.fluxer.app/v1/guilds/%s", m.GuildID), nil)
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, m.GuildID), nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
 	
 	resp, err := http.DefaultClient.Do(req)
@@ -66,7 +80,7 @@ func (b *Bot) IsOwner(m *Message) bool {
 }
 
 func (b *Bot) IsNSFW(channelID string) bool {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("https://api.fluxer.app/v1/channels/%s", channelID), nil)
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/channels/%s", b.BaseURL, channelID), nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
 
 	resp, err := http.DefaultClient.Do(req)
@@ -74,7 +88,6 @@ func (b *Bot) IsNSFW(channelID string) bool {
 		return false
 	}
 	defer resp.Body.Close()
-
 	b.checkRateLimit(resp.StatusCode)
 
 	var channel struct {
@@ -86,7 +99,7 @@ func (b *Bot) IsNSFW(channelID string) bool {
 
 func (b *Bot) SendMessage(channelID string, content string) {
 	body, _ := json.Marshal(map[string]string{"content": content})
-	req, _ := http.NewRequest("POST", fmt.Sprintf("https://api.fluxer.app/v1/channels/%s/messages", channelID), bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, channelID), bytes.NewBuffer(body))
 	req.Header.Set("Authorization", "Bot "+b.Token)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -99,7 +112,7 @@ func (b *Bot) SendMessage(channelID string, content string) {
 
 func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 	body, _ := json.Marshal(map[string]interface{}{"embeds": []interface{}{embed}})
-	req, _ := http.NewRequest("POST", fmt.Sprintf("https://api.fluxer.app/v1/channels/%s/messages", channelID), bytes.NewBuffer(body))
+	req, _ := http.NewRequest("POST", fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, channelID), bytes.NewBuffer(body))
 	req.Header.Set("Authorization", "Bot "+b.Token)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -111,18 +124,25 @@ func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 }
 
 func (b *Bot) Run() error {
-	fmt.Println("[gofluxer]: Attempting to connect to Fluxer Gateway...")
+	for {
+		fmt.Println("[gofluxer]: Attempting to connect to Fluxer Gateway...")
+		fmt.Printf("[gofluxer]: Connecting to %s...\n", b.GatewayURL)
+		conn, _, err := websocket.DefaultDialer.Dial(b.GatewayURL, nil)
+		if err != nil {
+			fmt.Printf("[gofluxer]: Connection failed: %v. Retrying in 5 seconds...\n", err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-	conn, _, err := websocket.DefaultDialer.Dial("wss://gateway.fluxer.app/?v=1", nil)
-	if err != nil {
-		fmt.Printf("[gofluxer]: Connection failed: %v. Retrying in 5 seconds...\n", err)
-		time.Sleep(5 * time.Second)
-		continue
+		b.Conn = conn
+		fmt.Println("[gofluxer]: Connected to Fluxer")
+		err = b.listen(conn)
+		fmt.Printf("[gofluxer]: Connection lost: %v. Reconnecting...\n", err)
+		conn.Close()
+		time.Sleep(2 * time.Second)
 	}
-	b.Conn = conn
-	fmt.Println("[gofluxer]: Connected to Fluxer")
-	defer conn.Close()
-
+}
+func (b *Bot) listen(conn *websocket.Conn) error {
 	for {
 		var payload struct {
 			Op int             `json:"op"`
@@ -142,30 +162,24 @@ func (b *Bot) Run() error {
 			json.Unmarshal(payload.D, &hello)
 			go b.heartbeat(time.Duration(hello.HeartbeatInterval) * time.Millisecond)
 			b.identify()
-
 		case 0:
 			if payload.T == "MESSAGE_CREATE" {
 				var m Message
 				json.Unmarshal(payload.D, &m)
-
 				if m.Author.Bot {
 					continue
 				}
-
 				for _, h := range b.Handlers {
 					h(&m)
 				}
-
 				if strings.HasPrefix(m.Content, b.CommandPrefix) {
 					cleanContent := m.Content[len(b.CommandPrefix):]
 					parts := strings.Fields(cleanContent)
-
 					if len(parts) > 0 {
 						cmdName := parts[0]
-						args := parts[1:] 
-						
+						args := parts[1:]
 						if cmd, ok := b.Commands[cmdName]; ok {
-							cmd(&m, args) 
+							cmd(&m, args)
 						}
 					}
 				}

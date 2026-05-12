@@ -22,8 +22,5 @@ func main() {
 		bot.SendMessage(m.ChannelID, strings.Join(args, " "))
 	})
 
-	fmt.Println("Gofluxer Bot is getting Ready")
-	if err := bot.Run(); err != nil {
-		fmt.Printf("Gofluxer Bot stopped: %v\n", err)
-	}
+	bot.Run()
 }

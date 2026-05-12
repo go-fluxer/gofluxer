@@ -12,7 +12,7 @@ This Go package is not officially endorsed by or affiliated with fluxer.app
 
 This assumes you already have a Go environment on your system. If not, download Go [from here](https://go.dev/dl). Make sure you have Go 1.21 or newer.
 
-Install gostoat by using the following command.
+Install gofluxer by using the following command.
 
 ```sh
 go get github.com/go-fluxer/gofluxer
@@ -42,6 +42,8 @@ import (
 func main() {
 	bot := gofluxer.NewBot("FLUXERBOTTOKEN", "!")
 	// Replace FLUXERBOTTOKEN with your actual fluxer.app bot token.
+	// bot.NewBotInstance("https://example.com/api/v1", "wss://example.com/gateway/?v=1")
+	// Use a 3rd party Fluxer instance with NewBotInstance
 
 	bot.OnMessage(func(m *gofluxer.Message) {
 		fmt.Printf("[%s]: %s\n", m.Author.Username, m.Content)
@@ -51,16 +53,19 @@ func main() {
 		}
 	})
 
-	fmt.Println("Gofluxer Bot is getting Ready")
-	if err := bot.Run(); err != nil {
-		fmt.Printf("Gofluxer Bot stopped: %v\n", err)
-	}
+	bot.Run()
 }
 ```
 
 You can refer to the examples directory for more examples to see how to use this Go package
 
 # gofluxer Update Notes:
+
+### Version 0.1.2 - May 12th, 2026
+
+- Added support for using 3rd party Fluxer instances with a new bot function: NewBotInstance
+- The reconnection logic should now work this time.
+- Updated the example_pingpong.go example and the example_commands.go example.
 
 ### Version 0.1.1 - April 26th, 2026
 
