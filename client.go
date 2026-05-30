@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
@@ -21,9 +22,18 @@ type Bot struct {
 	CommandPrefix string
 	BaseURL       string
 	GatewayURL    string
+	EnableCache   bool
+	MaxCacheSize  int
 	Handlers      []func(m *Message)
 	Commands      map[string]func(m *Message, args []string)
 	Conn          *websocket.Conn
+	ReadyHandlers        []func()
+	UserJoinHandlers     []func(u *UserJoinPayload)
+	UserLeaveHandlers    []func(l *UserLeavePayload)
+	MessageDeleteHandlers []func(d *MessageDeletePayload)
+	messageCache  map[string]Message
+	cacheOrder    []string
+	cacheMutex    sync.RWMutex
 }
 
 func NewBot(token, prefix string) *Bot {
@@ -33,11 +43,22 @@ func NewBot(token, prefix string) *Bot {
 		BaseURL:       DefaultBaseURL,
 		GatewayURL:    DefaultGatewayURL,
 		Commands:      make(map[string]func(m *Message, args []string)),
+		messageCache:  make(map[string]Message),
+		cacheOrder:    make([]string, 0),
+		EnableCache:   false,
 	}
 }
 func (b *Bot) NewBotInstance(apiBase, gatewayURL string) {
 	b.BaseURL = apiBase
 	b.GatewayURL = gatewayURL
+}
+func (b *Bot) NewBotConfig(enableCache bool, maxCacheSize int) {
+	b.EnableCache = enableCache
+	if maxCacheSize <= 0 {
+		b.MaxCacheSize = 500
+	} else {
+		b.MaxCacheSize = maxCacheSize
+	}
 }
 
 
@@ -45,9 +66,22 @@ func (b *Bot) NewBotInstance(apiBase, gatewayURL string) {
 func (b *Bot) OnMessage(handler func(m *Message)) {
 	b.Handlers = append(b.Handlers, handler)
 }
-
 func (b *Bot) AddCommand(name string, handler func(m *Message, args []string)) {
 	b.Commands[name] = handler
+}
+
+func (b *Bot) OnReady(handler func()) {
+	b.ReadyHandlers = append(b.ReadyHandlers, handler)
+}
+
+func (b *Bot) OnUserJoin(handler func(u *UserJoinPayload)) {
+	b.UserJoinHandlers = append(b.UserJoinHandlers, handler)
+}
+func (b *Bot) OnUserLeave(handler func(l *UserLeavePayload)) {
+	b.UserLeaveHandlers = append(b.UserLeaveHandlers, handler)
+}
+func (b *Bot) OnMessageDelete(handler func(d *MessageDeletePayload)) {
+	b.MessageDeleteHandlers = append(b.MessageDeleteHandlers, handler)
 }
 
 func (b *Bot) checkRateLimit(statusCode int) {
@@ -109,6 +143,26 @@ func (b *Bot) SendMessage(channelID string, content string) {
 		resp.Body.Close()
 	}
 }
+func (b *Bot) ReplyMessage(m *Message, content string) {
+	payload := map[string]interface{}{
+		"content": content,
+		"message_reference": map[string]string{
+			"message_id": m.ID,
+			"channel_id": m.ChannelID,
+		},
+	}
+
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, m.ChannelID)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil {
+		b.checkRateLimit(resp.StatusCode)
+		resp.Body.Close()
+	}
+}
 
 func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 	body, _ := json.Marshal(map[string]interface{}{"embeds": []interface{}{embed}})
@@ -163,15 +217,35 @@ func (b *Bot) listen(conn *websocket.Conn) error {
 			go b.heartbeat(time.Duration(hello.HeartbeatInterval) * time.Millisecond)
 			b.identify()
 		case 0:
-			if payload.T == "MESSAGE_CREATE" {
+			switch payload.T {
+			case "READY":
+				for _, h := range b.ReadyHandlers {
+					go h()
+				}
+			case "MESSAGE_CREATE":
 				var m Message
 				json.Unmarshal(payload.D, &m)
+
 				if m.Author.Bot {
 					continue
 				}
+				
+				if b.EnableCache {
+					b.cacheMutex.Lock()
+					if len(b.cacheOrder) >= b.MaxCacheSize {
+						oldestID := b.cacheOrder[0]
+						b.cacheOrder = b.cacheOrder[1:]
+						delete(b.messageCache, oldestID)
+					}
+					b.messageCache[m.ID] = m
+					b.cacheOrder = append(b.cacheOrder, m.ID)
+					b.cacheMutex.Unlock()
+				}
+
 				for _, h := range b.Handlers {
 					h(&m)
 				}
+
 				if strings.HasPrefix(m.Content, b.CommandPrefix) {
 					cleanContent := m.Content[len(b.CommandPrefix):]
 					parts := strings.Fields(cleanContent)
@@ -182,6 +256,46 @@ func (b *Bot) listen(conn *websocket.Conn) error {
 							cmd(&m, args)
 						}
 					}
+				}
+			case "GUILD_MEMBER_ADD":
+				var uj UserJoinPayload
+				json.Unmarshal(payload.D, &uj)
+				for _, h := range b.UserJoinHandlers {
+					go h(&uj)
+				}
+			case "GUILD_MEMBER_REMOVE":
+				var ul UserLeavePayload
+				json.Unmarshal(payload.D, &ul)
+				ul.UserID = ul.User.ID
+
+				req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, ul.GuildID), nil)
+				req.Header.Set("Authorization", "Bot "+b.Token)
+				if resp, err := http.DefaultClient.Do(req); err == nil {
+					var guild struct{ Name string `json:"name"` }
+					json.NewDecoder(resp.Body).Decode(&guild)
+					ul.GuildName = guild.Name
+					resp.Body.Close()
+				}
+				for _, h := range b.UserLeaveHandlers {
+					go h(&ul)
+				}
+			case "MESSAGE_DELETE":
+				var md MessageDeletePayload
+				json.Unmarshal(payload.D, &md)
+
+				b.cacheMutex.RLock()
+				cachedMsg, exists := b.messageCache[md.MessageID]
+				b.cacheMutex.RUnlock()
+				if exists {
+					md.CachedContent = cachedMsg.Content
+					md.Author = cachedMsg.Author
+					b.cacheMutex.Lock()
+					delete(b.messageCache, md.MessageID)
+					b.cacheMutex.Unlock()
+				}
+
+				for _, h := range b.MessageDeleteHandlers {
+					go h(&md)
 				}
 			}
 		}

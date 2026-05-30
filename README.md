@@ -61,6 +61,12 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.2.0 - May 30th, 2026
+
+- Introduced OnReady, OnUserJoin, OnUserLeave, and OnMessageDelete events.
+- Added ReplyMessage where the bot can reply to the command author. Similar to SendMessage()
+- Added a new bot function called NewBotConfig for message caching limits
+
 ### Version 0.1.2 - May 12th, 2026
 
 - Added support for using 3rd party Fluxer instances with a new bot function: NewBotInstance

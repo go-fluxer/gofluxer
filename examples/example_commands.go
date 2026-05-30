@@ -10,7 +10,7 @@ func main() {
 	bot := gofluxer.NewBot("FLUXERBOTTOKEN", "!")
 	// Replace FLUXERBOTTOKEN with your actual fluxer.app bot token.
 
-	bot.AddCommand("ping", func(m *gofluxer.Message) {
+	bot.AddCommand("ping", func(m *gofluxer.Message, args []string) {
 		bot.SendMessage(m.ChannelID, "Pong!")
 	})
 
