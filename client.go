@@ -27,10 +27,12 @@ type Bot struct {
 	Handlers      []func(m *Message)
 	Commands      map[string]func(m *Message, args []string)
 	Conn          *websocket.Conn
-	ReadyHandlers        []func()
-	UserJoinHandlers     []func(u *UserJoinPayload)
-	UserLeaveHandlers    []func(l *UserLeavePayload)
+	ReadyHandlers         []func()
+	UserJoinHandlers      []func(u *UserJoinPayload)
+	UserLeaveHandlers     []func(l *UserLeavePayload)
 	MessageDeleteHandlers []func(d *MessageDeletePayload)
+	MessageUpdateHandlers []func(e *MessageUpdatePayload)
+	ReactionAddHandlers   []func(e *MessageReactionPayload)
 	messageCache  map[string]Message
 	cacheOrder    []string
 	cacheMutex    sync.RWMutex
@@ -82,6 +84,12 @@ func (b *Bot) OnUserLeave(handler func(l *UserLeavePayload)) {
 }
 func (b *Bot) OnMessageDelete(handler func(d *MessageDeletePayload)) {
 	b.MessageDeleteHandlers = append(b.MessageDeleteHandlers, handler)
+}
+func (b *Bot) OnMessageEdit(handler func(e *MessageUpdatePayload)) {
+	b.MessageUpdateHandlers = append(b.MessageUpdateHandlers, handler)
+}
+func (b *Bot) OnMessageReact(handler func(e *MessageReactionPayload)) {
+	b.ReactionAddHandlers = append(b.ReactionAddHandlers, handler)
 }
 
 func (b *Bot) checkRateLimit(statusCode int) {
@@ -175,6 +183,123 @@ func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 		b.checkRateLimit(resp.StatusCode)
 		resp.Body.Close()
 	}
+}
+
+func (b *Bot) AddReaction(channelID, messageID, emoji string) {
+	url := fmt.Sprintf("%s/channels/%s/messages/%s/reactions/%s", b.BaseURL, channelID, messageID, emoji)
+	req, _ := http.NewRequest("PUT", url, nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil {
+		b.checkRateLimit(resp.StatusCode)
+		resp.Body.Close()
+	}
+}
+
+func (b *Bot) ForwardMessage(targetChannelID string, m *Message) {
+	payload := map[string]interface{}{
+		"message_reference": map[string]string{
+			"channel_id": m.ChannelID,
+			"message_id": m.ID,
+			"guild_id":   m.GuildID,
+			"type": "1",
+		},
+		"message_snapshots": []map[string]interface{}{
+			{
+				"content":   m.Content,
+				"author_id": m.Author.ID,
+			},
+		},
+	}
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, targetChannelID)
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil {
+		b.checkRateLimit(resp.StatusCode)
+		resp.Body.Close()
+	}
+}
+
+func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, guildID), nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	var info GuildInfo
+	json.NewDecoder(resp.Body).Decode(&info)
+	return &info, nil
+}
+
+func (b *Bot) AddRole(guildID, userID, roleID string) error {
+	url := fmt.Sprintf("%s/guilds/%s/members/%s/roles/%s", b.BaseURL, guildID, userID, roleID)
+	req, _ := http.NewRequest("PUT", url, nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (b *Bot) RemoveRole(guildID, userID, roleID string) error {
+	url := fmt.Sprintf("%s/guilds/%s/members/%s/roles/%s", b.BaseURL, guildID, userID, roleID)
+	req, _ := http.NewRequest("DELETE", url, nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (b *Bot) TimeoutMember(guildID, userID string, durationSeconds int, reason string) error {
+	expiration := time.Now().Add(time.Duration(durationSeconds) * time.Second).Format(time.RFC3339)
+	payload := map[string]interface{}{
+		"communication_disabled_until": expiration,
+	}
+	if reason != "" {
+		payload["timeout_reason"] = reason
+	}
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/guilds/%s/members/%s", b.BaseURL, guildID, userID)
+	req, _ := http.NewRequest("PATCH", url, bytes.NewBuffer(body))
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	return nil
 }
 
 func (b *Bot) Run() error {
@@ -296,6 +421,31 @@ func (b *Bot) listen(conn *websocket.Conn) error {
 
 				for _, h := range b.MessageDeleteHandlers {
 					go h(&md)
+				}
+			case "MESSAGE_UPDATE":
+				var mu MessageUpdatePayload
+				json.Unmarshal(payload.D, &mu)
+				if b.EnableCache {
+					b.cacheMutex.RLock()
+					cachedMsg, exists := b.messageCache[mu.MessageID]
+					b.cacheMutex.RUnlock()
+					if exists {
+						mu.OldContent = cachedMsg.Content
+						b.cacheMutex.Lock()
+						cachedMsg.Content = mu.NewContent
+						b.messageCache[mu.MessageID] = cachedMsg
+						b.cacheMutex.Unlock()
+					}
+				}
+
+				for _, h := range b.MessageUpdateHandlers {
+					go h(&mu)
+				}
+			case "MESSAGE_REACTION_ADD":
+				var mr MessageReactionPayload
+				json.Unmarshal(payload.D, &mr)
+				for _, h := range b.ReactionAddHandlers {
+					go h(&mr)
 				}
 			}
 		}
