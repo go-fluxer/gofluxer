@@ -186,7 +186,7 @@ func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 }
 
 func (b *Bot) AddReaction(channelID, messageID, emoji string) {
-	url := fmt.Sprintf("%s/channels/%s/messages/%s/reactions/%s", b.BaseURL, channelID, messageID, emoji)
+	url := fmt.Sprintf("%s/channels/%s/messages/%s/reactions/%s/@me", b.BaseURL, channelID, messageID, emoji)
 	req, _ := http.NewRequest("PUT", url, nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
 	resp, err := http.DefaultClient.Do(req)
@@ -196,30 +196,82 @@ func (b *Bot) AddReaction(channelID, messageID, emoji string) {
 	}
 }
 
-func (b *Bot) ForwardMessage(targetChannelID string, m *Message) {
+func (b *Bot) ForwardMessage(sourceChannelID, messageID, targetChannelID string) error {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/channels/%s/messages/%s", b.BaseURL, sourceChannelID, messageID), nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("[gofluxer]: could not find source message (status %d)", resp.StatusCode)
+	}
+
+	var srcMsg Message
+	json.NewDecoder(resp.Body).Decode(&srcMsg)
 	payload := map[string]interface{}{
-		"message_reference": map[string]string{
-			"channel_id": m.ChannelID,
-			"message_id": m.ID,
-			"guild_id":   m.GuildID,
-			"type": "1",
+		"type": 1,
+		"message_reference": map[string]interface{}{
+			"message_id": srcMsg.ID,
+			"channel_id": sourceChannelID,
+			"guild_id":   srcMsg.GuildID,
 		},
 		"message_snapshots": []map[string]interface{}{
 			{
-				"content":   m.Content,
-				"author_id": m.Author.ID,
+				"content": srcMsg.Content,
 			},
 		},
 	}
+
+	body, _ := json.Marshal(payload)
+	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, targetChannelID)
+	reqForward, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	reqForward.Header.Set("Authorization", "Bot "+b.Token)
+	reqForward.Header.Set("Content-Type", "application/json")
+	respForward, err := http.DefaultClient.Do(reqForward)
+	if err != nil {
+		return err
+	}
+	defer respForward.Body.Close()
+
+	if respForward.StatusCode != http.StatusOK && respForward.StatusCode != http.StatusCreated {
+		return fmt.Errorf("API returned with status code %d", respForward.StatusCode)
+	}
+
+	return nil
+}
+
+func (b *Bot) ForwardMessage(targetChannelID string, m *Message) {
+	payload := map[string]interface{}{
+		"type": 1,
+		"message_reference": map[string]interface{}{
+			"message_id": m.ID,
+			"channel_id": m.ChannelID,
+			"guild_id":   m.GuildID,
+		},
+		"message_snapshots": []map[string]interface{}{
+			{
+				"content": m.Content,
+			},
+		},
+	}
+
 	body, _ := json.Marshal(payload)
 	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, targetChannelID)
 	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
 	req.Header.Set("Authorization", "Bot "+b.Token)
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
-	if err == nil {
-		b.checkRateLimit(resp.StatusCode)
-		resp.Body.Close()
+	if err != nil {
+		fmt.Printf("[gofluxer]: Forward failed: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		fmt.Printf("API returned with status code %d", resp.StatusCode)
 	}
 }
 
@@ -251,7 +303,7 @@ func (b *Bot) AddRole(guildID, userID, roleID string) error {
 	b.checkRateLimit(resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+		return fmt.Errorf("API returned with status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -270,7 +322,7 @@ func (b *Bot) RemoveRole(guildID, userID, roleID string) error {
 	b.checkRateLimit(resp.StatusCode)
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+		return fmt.Errorf("API returned with status code %d", resp.StatusCode)
 	}
 
 	return nil
@@ -296,7 +348,7 @@ func (b *Bot) TimeoutMember(guildID, userID string, durationSeconds int, reason 
 	defer resp.Body.Close()
 	b.checkRateLimit(resp.StatusCode)
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+		return fmt.Errorf("API returned with status code %d", resp.StatusCode)
 	}
 
 	return nil

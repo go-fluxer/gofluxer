@@ -61,11 +61,21 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.3.0 - June 8th, 2026
+
+- Introduced OnMessageEdit and OnMessageReact events (NewBotFunction is needed to enable message caching in order for OnMessageEdit to work).
+- Introduced GuildInfo struct in models for server information.
+- Added the ability to timeout members.
+- Added the ability to react to messages
+- Added the ability to add a role to a user and remove a role from a user
+- Added the ability to forward messages. (Does not actually work).
+
 ### Version 0.2.0 - May 30th, 2026
 
 - Introduced OnReady, OnUserJoin, OnUserLeave, and OnMessageDelete events.
 - Added ReplyMessage where the bot can reply to the command author. Similar to SendMessage()
 - Added a new bot function called NewBotConfig for message caching limits
+- Added an example_webhook.go example to show how to use the webhook client.
 
 ### Version 0.1.2 - May 12th, 2026
 

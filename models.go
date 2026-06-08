@@ -49,7 +49,7 @@ type MessageDeletePayload struct {
 	CachedContent string `json:"content,omitempty"`
 }
 type MessageUpdatePayload struct {
-	MessageID      string `json:"message_id"`
+	MessageID      string `json:"id"`
 	ChannelID      string `json:"channel_id"`
 	GuildID        string `json:"guild_id"`
 	OldContent     string `json:"old_content"`
