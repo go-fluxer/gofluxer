@@ -242,39 +242,6 @@ func (b *Bot) ForwardMessage(sourceChannelID, messageID, targetChannelID string)
 	return nil
 }
 
-func (b *Bot) ForwardMessage(targetChannelID string, m *Message) {
-	payload := map[string]interface{}{
-		"type": 1,
-		"message_reference": map[string]interface{}{
-			"message_id": m.ID,
-			"channel_id": m.ChannelID,
-			"guild_id":   m.GuildID,
-		},
-		"message_snapshots": []map[string]interface{}{
-			{
-				"content": m.Content,
-			},
-		},
-	}
-
-	body, _ := json.Marshal(payload)
-	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, targetChannelID)
-	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	req.Header.Set("Authorization", "Bot "+b.Token)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Printf("[gofluxer]: Forward failed: %v\n", err)
-		return
-	}
-	defer resp.Body.Close()
-	b.checkRateLimit(resp.StatusCode)
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		fmt.Printf("API returned with status code %d", resp.StatusCode)
-	}
-}
-
 func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, guildID), nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
