@@ -205,7 +205,7 @@ func (b *Bot) ForwardMessage(sourceChannelID, messageID, targetChannelID string)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("[gofluxer]: could not find source message (status %d)", resp.StatusCode)
+		return fmt.Errorf("[gofluxer]: could not find source message. API returned with status code %d", resp.StatusCode)
 	}
 
 	var srcMsg Message
@@ -252,6 +252,10 @@ func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
 	}
 	defer resp.Body.Close()
 	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Bot not in server or API error. API returned with status code %d", resp.StatusCode)
+	}
 
 	var info GuildInfo
 	json.NewDecoder(resp.Body).Decode(&info)
@@ -320,6 +324,33 @@ func (b *Bot) TimeoutMember(guildID, userID string, durationSeconds int, reason 
 
 	return nil
 }
+
+func (b *Bot) GetGuildChannels(guildID string) ([]Channel, error) {
+	url := fmt.Sprintf("%s/guilds/%s/channels", b.BaseURL, guildID)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch channels. API returned with status code %d", resp.StatusCode)
+	}
+
+	var channels []Channel
+	err = json.NewDecoder(resp.Body).Decode(&channels)
+	return channels, err
+}
+
+// NOTE: IsBotInGuild is intended for use with the oauth2 system introduced in v0.4.0
+func (b *Bot) IsBotInGuild(guildID string) bool {
+	_, err := b.GetGuild(guildID)
+	return err == nil
+}
+
+
 
 func (b *Bot) Run() error {
 	for {
@@ -456,7 +487,6 @@ func (b *Bot) listen(conn *websocket.Conn) error {
 						b.cacheMutex.Unlock()
 					}
 				}
-
 				for _, h := range b.MessageUpdateHandlers {
 					go h(&mu)
 				}

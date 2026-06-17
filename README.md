@@ -61,6 +61,10 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.4.0 - June 17th, 2026
+
+- Added OAuth2 support for making web dashboards for Fluxer bots. It only supports using the indentify and guilds scope.
+
 ### Version 0.3.0 - June 8th, 2026
 
 - Introduced OnMessageEdit and OnMessageReact events (NewBotFunction is needed to enable message caching in order for OnMessageEdit to work).

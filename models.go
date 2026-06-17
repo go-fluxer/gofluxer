@@ -15,6 +15,13 @@ type User struct {
 	Bot      bool   `json:"bot"`
 }
 
+type Channel struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Type    int    `json:"type"`
+	GuildID string `json:"guild_id"`
+}
+
 type GuildInfo struct {
 	ID           string   `json:"id"`
 	Name         string   `json:"name"`
@@ -61,4 +68,30 @@ type MessageReactionPayload struct {
 	MessageID string `json:"message_id"`
 	GuildID   string `json:"guild_id"`
 	Emoji     string `json:"emoji"`
+}
+
+
+
+type TokenResponse struct {
+	AccessToken  string `json:"access_token"`
+	TokenType    string `json:"token_type"`
+	ExpiresIn    int    `json:"expires_in"`
+	RefreshToken string `json:"refresh_token"`
+	Scope        string `json:"scope"`
+}
+
+type OAuthUser struct {
+	ID            string `json:"id"`
+	Username      string `json:"username"`
+	Email         string `json:"email,omitempty"`
+	Avatar        string `json:"avatar"`
+	MFAEnabled    bool   `json:"mfa_enabled"`
+}
+
+type OAuthGuild struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Icon        string `json:"icon"`
+	OwnerID     string `json:"owner_id"`
+	Permissions string `json:"permissions"`
 }
