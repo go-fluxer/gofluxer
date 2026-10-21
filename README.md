@@ -4,9 +4,7 @@ gofluxer is an API wrapper that allows you to create fluxer.app bots as well as 
 
 If you need help with using the gofluxer package, join the [gofluxer Fluxer server](https://fluxer.gg/KTXuuy7k). 
 
-**NOTICE**: This library is still a heavy work in progress. Expect unfinished and buggy features.
-
-This Go package is not officially endorsed by or affiliated with fluxer.app
+This Go package is not officially endorsed by or affiliated with fluxer.app / Fluxer Platform AB.
 
 ## Getting Started
 
@@ -61,9 +59,19 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.5.0 - October 21st, 2026
+
+- Added WhEditMessage, EditWebhook, GetWebhook, and DeleteWebhook. Only accessable through the bot client.
+- Added the ability to create thread and creating forum posts within the bot client.
+- Added SendMessageClean and ReplyMessageClean which is like SendMessage and ReplyMessage except messages are sanitized to prevent everyone and here mentions.
+- Added the ability to edit and delete messages with EditMessage and DeleteMessage.
+- Added the ability to get information about a sticker in a server.
+- Added the ability to change the bot's presense.
+- Forwarding messages now works.
+
 ### Version 0.4.0 - June 17th, 2026
 
-- Added OAuth2 support for making web dashboards for Fluxer bots. It only supports using the indentify and guilds scope.
+- Added OAuth2 support for making web dashboards for Fluxer bots. It only supports using the identify and guilds scope.
 
 ### Version 0.3.0 - June 8th, 2026
 

@@ -36,6 +36,7 @@ type Bot struct {
 	messageCache  map[string]Message
 	cacheOrder    []string
 	cacheMutex    sync.RWMutex
+	identifyProperties    map[string]string
 }
 
 func NewBot(token, prefix string) *Bot {
@@ -120,7 +121,6 @@ func (b *Bot) IsOwner(m *Message) bool {
 	json.NewDecoder(resp.Body).Decode(&guild)
 	return m.Author.ID == guild.OwnerID
 }
-
 func (b *Bot) IsNSFW(channelID string) bool {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/channels/%s", b.BaseURL, channelID), nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
@@ -171,6 +171,65 @@ func (b *Bot) ReplyMessage(m *Message, content string) {
 		resp.Body.Close()
 	}
 }
+func (b *Bot) EditMessage(channelID, messageID, newContent string, embeds []interface{}) (*Message, error) {
+	url := fmt.Sprintf("%s/channels/%s/messages/%s", b.BaseURL, channelID, messageID)
+	payload := MessageUpdateRequest{
+		Content: newContent,
+		Embeds:  embeds,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal edit message payload: %w", err)
+	}
+
+	req, err := http.NewRequest("PATCH", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("edit message failed with status code: %d", resp.StatusCode)
+	}
+
+	var editedMsg Message
+	if err := json.NewDecoder(resp.Body).Decode(&editedMsg); err != nil {
+		return nil, err
+	}
+
+	return &editedMsg, nil
+}
+func (b *Bot) DeleteMessage(channelID, messageID string) error {
+	url := fmt.Sprintf("%s/channels/%s/messages/%s", b.BaseURL, channelID, messageID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
 
 func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 	body, _ := json.Marshal(map[string]interface{}{"embeds": []interface{}{embed}})
@@ -196,56 +255,147 @@ func (b *Bot) AddReaction(channelID, messageID, emoji string) {
 	}
 }
 
-func (b *Bot) ForwardMessage(sourceChannelID, messageID, targetChannelID string) error {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/channels/%s/messages/%s", b.BaseURL, sourceChannelID, messageID), nil)
-	req.Header.Set("Authorization", "Bot "+b.Token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("[gofluxer]: could not find source message. API returned with status code %d", resp.StatusCode)
-	}
-
-	var srcMsg Message
-	json.NewDecoder(resp.Body).Decode(&srcMsg)
-	payload := map[string]interface{}{
-		"type": 1,
-		"message_reference": map[string]interface{}{
-			"message_id": srcMsg.ID,
-			"channel_id": sourceChannelID,
-			"guild_id":   srcMsg.GuildID,
-		},
-		"message_snapshots": []map[string]interface{}{
-			{
-				"content": srcMsg.Content,
-			},
-		},
-	}
-
-	body, _ := json.Marshal(payload)
-	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, targetChannelID)
-	reqForward, _ := http.NewRequest("POST", url, bytes.NewBuffer(body))
-	reqForward.Header.Set("Authorization", "Bot "+b.Token)
-	reqForward.Header.Set("Content-Type", "application/json")
-	respForward, err := http.DefaultClient.Do(reqForward)
-	if err != nil {
-		return err
-	}
-	defer respForward.Body.Close()
-
-	if respForward.StatusCode != http.StatusOK && respForward.StatusCode != http.StatusCreated {
-		return fmt.Errorf("API returned with status code %d", respForward.StatusCode)
-	}
-
-	return nil
+func SanitizeContent(content string) string {
+	content = strings.ReplaceAll(content, "@everyone", "@\u200beveryone")
+	content = strings.ReplaceAll(content, "@here", "@\u200bhere")
+	return content
+}
+func (b *Bot) SendMessageClean(channelID string, content string) {
+	cleanContent := SanitizeContent(content)
+	b.SendMessage(channelID, cleanContent)
+}
+func (b *Bot) ReplyMessageClean(m *Message, content string) {
+	cleanContent := SanitizeContent(content)
+	b.ReplyMessage(m, cleanContent)
 }
 
-func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
-	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, guildID), nil)
+func (b *Bot) ForwardMessage(targetChannelID string, origGuildID, origChannelID, origMessageID string, comment string) (*Message, error) {
+	url := fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, targetChannelID)
+	payload := ForwardMessageRequest{
+		MessageReference: MessageReference{
+			GuildID:   origGuildID,
+			ChannelID: origChannelID,
+			MessageID: origMessageID,
+			Type:      1,
+		},
+		Content: comment,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal forward payload: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
 	req.Header.Set("Authorization", "Bot "+b.Token)
-	
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	var msg Message
+	if err := json.NewDecoder(resp.Body).Decode(&msg); err != nil {
+		return nil, err
+	}
+	return &msg, nil
+}
+
+func (b *Bot) EditChannel(channelID string, req EditChannelRequest) (*Channel, error) {
+	url := fmt.Sprintf("%s/channels/%s", b.BaseURL, channelID)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal EditChannel payload: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("PATCH", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Bot "+b.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	var updatedChannel Channel
+	if err := json.NewDecoder(resp.Body).Decode(&updatedChannel); err != nil {
+		return nil, err
+	}
+	return &updatedChannel, nil
+}
+
+func (b *Bot) StartThreadFromMessage(channelID, messageID, name string, autoArchiveMinutes int) (*Channel, error) {
+	url := fmt.Sprintf("%s/channels/%s/messages/%s/threads", b.BaseURL, channelID, messageID)
+	payload := StartThreadRequest{
+		Name:                name,
+		AutoArchiveDuration: autoArchiveMinutes,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	var threadChannel Channel
+	if err := json.NewDecoder(resp.Body).Decode(&threadChannel); err != nil {
+		return nil, err
+	}
+	return &threadChannel, nil
+}
+func (b *Bot) StartThreadWithoutMessage(channelID, name string, threadType int, autoArchiveMinutes int) (*Channel, error) {
+	url := fmt.Sprintf("%s/channels/%s/threads", b.BaseURL, channelID)
+	payload := StartThreadRequest{
+		Name:                name,
+		Type:                threadType,
+		AutoArchiveDuration: autoArchiveMinutes,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
@@ -253,10 +403,68 @@ func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
 	defer resp.Body.Close()
 	b.checkRateLimit(resp.StatusCode)
 
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	var threadChannel Channel
+	if err := json.NewDecoder(resp.Body).Decode(&threadChannel); err != nil {
+		return nil, err
+	}
+	return &threadChannel, nil
+}
+
+func (b *Bot) CreateForumPost(forumChannelID, title, content string, appliedTagIDs []string) (*Channel, error) {
+	url := fmt.Sprintf("%s/channels/%s/threads", b.BaseURL, forumChannelID)
+	payload := StartForumThreadRequest{
+		Name: title,
+		Message: ForumPostMessage{
+			Content: content,
+		},
+		AppliedTags: appliedTagIDs,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	var forumThread Channel
+	if err := json.NewDecoder(resp.Body).Decode(&forumThread); err != nil {
+		return nil, err
+	}
+	return &forumThread, nil
+}
+
+func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
+	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, guildID), nil)
+	req.Header.Set("Authorization", "Bot "+b.Token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Bot not in server or API error. API returned with status code %d", resp.StatusCode)
 	}
-
 	var info GuildInfo
 	json.NewDecoder(resp.Body).Decode(&info)
 	return &info, nil
@@ -272,11 +480,9 @@ func (b *Bot) AddRole(guildID, userID, roleID string) error {
 	}
 	defer resp.Body.Close()
 	b.checkRateLimit(resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("API returned with status code %d", resp.StatusCode)
 	}
-
 	return nil
 }
 
@@ -284,18 +490,15 @@ func (b *Bot) RemoveRole(guildID, userID, roleID string) error {
 	url := fmt.Sprintf("%s/guilds/%s/members/%s/roles/%s", b.BaseURL, guildID, userID, roleID)
 	req, _ := http.NewRequest("DELETE", url, nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
-
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 	b.checkRateLimit(resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("API returned with status code %d", resp.StatusCode)
 	}
-
 	return nil
 }
 
@@ -321,7 +524,6 @@ func (b *Bot) TimeoutMember(guildID, userID string, durationSeconds int, reason 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
 		return fmt.Errorf("API returned with status code %d", resp.StatusCode)
 	}
-
 	return nil
 }
 
@@ -334,14 +536,51 @@ func (b *Bot) GetGuildChannels(guildID string) ([]Channel, error) {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch channels. API returned with status code %d", resp.StatusCode)
+		return nil, fmt.Errorf("Failed to fetch channels. API returned with status code: %d", resp.StatusCode)
 	}
-
 	var channels []Channel
 	err = json.NewDecoder(resp.Body).Decode(&channels)
 	return channels, err
+}
+
+func (b *Bot) GetSticker(stickerID string) (*Sticker, error) {
+	url := fmt.Sprintf("%s/stickers/%s/metadata", b.BaseURL, stickerID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API returned with status code: %d", resp.StatusCode)
+	}
+
+	var sticker Sticker
+	if err := json.NewDecoder(resp.Body).Decode(&sticker); err != nil {
+		return nil, err
+	}
+	return &sticker, nil
+}
+
+func (b *Bot) SetPresence(status string) error {
+	if b.Conn == nil {
+		return fmt.Errorf("gateway connection is not active")
+	}
+
+	payload := PresenceUpdatePayload{
+		Op: 3,
+	}
+	payload.D.Status = status
+	payload.D.AFK = (status == "idle")
+	return b.Conn.WriteJSON(payload)
 }
 
 // NOTE: IsBotInGuild is intended for use with the oauth2 system introduced in v0.4.0
@@ -502,16 +741,20 @@ func (b *Bot) listen(conn *websocket.Conn) error {
 }
 
 func (b *Bot) identify() {
+	props := map[string]string{
+		"os":      "linux",
+		"browser": "gofluxer",
+		"device":  "gofluxer",
+	}
+	if b.identifyProperties != nil {
+		props = b.identifyProperties
+	}
 	payload := map[string]interface{}{
 		"op": 2,
 		"d": map[string]interface{}{
 			"token":   b.Token,
 			"intents": 512,
-			"properties": map[string]string{
-				"os":      "linux",
-				"browser": "gofluxer",
-				"device":  "gofluxer",
-			},
+			"properties": props,
 		},
 	}
 	b.Conn.WriteJSON(payload)

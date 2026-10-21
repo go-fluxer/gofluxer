@@ -69,6 +69,75 @@ type MessageReactionPayload struct {
 	GuildID   string `json:"guild_id"`
 	Emoji     string `json:"emoji"`
 }
+type MessageUpdateRequest struct {
+	Content string        `json:"content,omitempty"`
+	Embeds  []interface{} `json:"embeds,omitempty"`
+	Flags   int           `json:"flags,omitempty"`
+}
+type Sticker struct {
+	ID          string `json:"id"`
+	GuildID     string `json:"guild_id,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Tags        string `json:"tags,omitempty"`
+	Type        int    `json:"type,omitempty"`
+	FormatType  int    `json:"format_type,omitempty"`
+	Available   bool   `json:"available,omitempty"`
+	User        *User  `json:"user,omitempty"`
+}
+type MessageReference struct {
+	MessageID string `json:"message_id"`
+	ChannelID string `json:"channel_id"`
+	GuildID   string `json:"guild_id,omitempty"`
+	Type      int    `json:"type,omitempty"`
+}
+type ForwardMessageRequest struct {
+	MessageReference MessageReference `json:"message_reference"`
+	Content          string           `json:"content,omitempty"`
+}
+
+type EditChannelRequest struct {
+	Name                 string  `json:"name,omitempty"`
+	Topic                *string `json:"topic,omitempty"`
+	NSFW                 *bool   `json:"nsfw,omitempty"`
+	RateLimitPerUser     *int    `json:"rate_limit_per_user,omitempty"`
+	Position             *int    `json:"position,omitempty"`
+	ParentID             *string `json:"parent_id,omitempty"`
+	DefaultAutoArchive   *int    `json:"default_auto_archive_duration,omitempty"`
+}
+
+type StartThreadRequest struct {
+	Name                string `json:"name"`
+	AutoArchiveDuration int    `json:"auto_archive_duration,omitempty"`
+	RateLimitPerUser    int    `json:"rate_limit_per_user,omitempty"`
+	Type                int    `json:"type,omitempty"`
+}
+type ForumTag struct {
+	ID        string `json:"id,omitempty"`
+	Name      string `json:"name"`
+	Moderated bool   `json:"moderated,omitempty"`
+	EmojiID   string `json:"emoji_id,omitempty"`
+	EmojiName string `json:"emoji_name,omitempty"`
+}
+type ForumPostMessage struct {
+	Content string        `json:"content,omitempty"`
+	Embeds  []interface{} `json:"embeds,omitempty"`
+}
+type StartForumThreadRequest struct {
+	Name                string           `json:"name"`
+	Message             ForumPostMessage `json:"message"`
+	AppliedTags         []string         `json:"applied_tags,omitempty"`
+	AutoArchiveDuration int              `json:"auto_archive_duration,omitempty"`
+}
+
+type PresenceUpdatePayload struct {
+	Op int `json:"op"`
+	D  struct {
+		Since      *int       `json:"since"`
+		Status     string     `json:"status"`
+		AFK        bool       `json:"afk"`
+	} `json:"d"`
+}
 
 
 
