@@ -59,6 +59,14 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.5.1 - October 23rd, 2026
+
+- Added GetUser function for getting information about a user based on a user ID.
+- Added Discriminator, Flags, and System to User struct.
+- Added Topic and Nsfw to Channel struct.
+- Added Pinned, Mention, and Flags to Message struct.
+- Added AfkTimeout and VerificationLevel in GuildInfo struct
+
 ### Version 0.5.0 - October 21st, 2026
 
 - Added WhEditMessage, EditWebhook, GetWebhook, and DeleteWebhook. Only accessable through the bot client.

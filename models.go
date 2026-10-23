@@ -6,13 +6,19 @@ type Message struct {
 	ChannelID string `json:"channel_id"`
 	GuildID   string `json:"guild_id"`
 	Author    User   `json:"author"`
+	Pinned    bool   `json:"pinned"`
+	Mention   bool   `json:"mention_everyone"`
+	Flags     int    `json:"flags"`
 }
 
 type User struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Avatar   string `json:"avatar"`
-	Bot      bool   `json:"bot"`
+	ID             string `json:"id"`
+	Username       string `json:"username"`
+	Discriminator  string `json:"discriminator"`
+	Avatar         string `json:"avatar,omitempty"`
+	Bot            bool   `json:"bot"`
+	Flags          int    `json:"flags"`
+	System         bool   `json:"system"`
 }
 
 type Channel struct {
@@ -20,19 +26,23 @@ type Channel struct {
 	Name    string `json:"name"`
 	Type    int    `json:"type"`
 	GuildID string `json:"guild_id"`
+	Topic   string `json:"topic"`
+	Nsfw    bool   `json:"nsfw"`
 }
 
 type GuildInfo struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	OwnerID      string   `json:"owner_id"`
-	MemberCount  int      `json:"member_count"`
-	Icon         string   `json:"icon"`
-	Banner       string   `json:"banner"`
-	Permissions  string   `json:"permissions"`
-	SysChannel   string   `json:"system_channel_id"`
-	AfkChannel   string   `json:"afk_channel_id"`
-	Vanity       string   `json:"vanity_url_code"`
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	OwnerID            string   `json:"owner_id"`
+	MemberCount        int      `json:"member_count"`
+	Icon               string   `json:"icon"`
+	Banner             string   `json:"banner"`
+	Permissions        string   `json:"permissions"`
+	SysChannel         string   `json:"system_channel_id,omitempty"`
+	AfkChannel         string   `json:"afk_channel_id,omitempty"`
+	AfkTimeout         string   `json:"afk_timeout,omitempty"`
+	Vanity             string   `json:"vanity_url_code,omitempty"`
+	VerificationLevel  int      `json:"verification_level"`
 }
 
 type UserJoinPayload struct {
@@ -148,7 +158,6 @@ type TokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	Scope        string `json:"scope"`
 }
-
 type OAuthUser struct {
 	ID            string `json:"id"`
 	Username      string `json:"username"`
@@ -156,7 +165,6 @@ type OAuthUser struct {
 	Avatar        string `json:"avatar"`
 	MFAEnabled    bool   `json:"mfa_enabled"`
 }
-
 type OAuthGuild struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`

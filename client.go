@@ -453,6 +453,32 @@ func (b *Bot) CreateForumPost(forumChannelID, title, content string, appliedTagI
 	return &forumThread, nil
 }
 
+func (b *Bot) GetUser(userID string) (*User, error) {
+	url := fmt.Sprintf("%s/users/%s", b.BaseURL, userID)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to fetch user, status code: %d", resp.StatusCode)
+	}
+
+	var user User
+	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (b *Bot) GetGuild(guildID string) (*GuildInfo, error) {
 	req, _ := http.NewRequest("GET", fmt.Sprintf("%s/guilds/%s", b.BaseURL, guildID), nil)
 	req.Header.Set("Authorization", "Bot "+b.Token)
