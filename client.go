@@ -596,9 +596,31 @@ func (b *Bot) GetSticker(stickerID string) (*Sticker, error) {
 	return &sticker, nil
 }
 
+// validPresenceStatuses is the set of values the gateway accepts for d.status.
+// Any other value closes the connection with 4002 "Invalid presence payload".
+var validPresenceStatuses = map[string]bool{
+	"online":    true,
+	"idle":      true,
+	"dnd":       true,
+	"invisible": true,
+	"offline":   true,
+}
+
+// SetPresence updates the bot's status without changing its custom status.
+// status must be one of online, idle, dnd, invisible or offline.
 func (b *Bot) SetPresence(status string) error {
+	return b.SetPresenceWithCustomStatus(status, nil)
+}
+
+// SetPresenceWithCustomStatus updates the bot's status and custom status.
+// A nil custom status leaves the current custom status unchanged. Clearing a
+// custom status requires sending an explicit null, which is not covered here.
+func (b *Bot) SetPresenceWithCustomStatus(status string, custom *CustomStatus) error {
 	if b.Conn == nil {
 		return fmt.Errorf("gateway connection is not active")
+	}
+	if !validPresenceStatuses[status] {
+		return fmt.Errorf("invalid presence status %q: must be one of online, idle, dnd, invisible, offline", status)
 	}
 
 	payload := PresenceUpdatePayload{
@@ -606,6 +628,7 @@ func (b *Bot) SetPresence(status string) error {
 	}
 	payload.D.Status = status
 	payload.D.AFK = (status == "idle")
+	payload.D.CustomStatus = custom
 	return b.Conn.WriteJSON(payload)
 }
 
