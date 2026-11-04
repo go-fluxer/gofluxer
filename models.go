@@ -140,12 +140,19 @@ type StartForumThreadRequest struct {
 	AutoArchiveDuration int              `json:"auto_archive_duration,omitempty"`
 }
 
+type CustomStatus struct {
+	Text      string `json:"text,omitempty"`
+	EmojiName string `json:"emoji_name,omitempty"`
+	EmojiID   string `json:"emoji_id,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+}
 type PresenceUpdatePayload struct {
 	Op int `json:"op"`
 	D  struct {
 		Since      *int       `json:"since"`
 		Status     string     `json:"status"`
 		AFK        bool       `json:"afk"`
+		CustomStatus *CustomStatus `json:"custom_status,omitempty"`
 	} `json:"d"`
 }
 

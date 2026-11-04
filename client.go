@@ -596,9 +596,22 @@ func (b *Bot) GetSticker(stickerID string) (*Sticker, error) {
 	return &sticker, nil
 }
 
+var validPresenceStatuses = map[string]bool{
+	"online":    true,
+	"idle":      true,
+	"dnd":       true,
+	"invisible": true,
+	"offline":   true,
+}
 func (b *Bot) SetPresence(status string) error {
+	return b.SetStatus(status, nil)
+}
+func (b *Bot) SetStatus(status string, custom *CustomStatus) error {
 	if b.Conn == nil {
-		return fmt.Errorf("gateway connection is not active")
+		return fmt.Errorf("Gateway connection is not active")
+	}
+	if !validPresenceStatuses[status] {
+		return fmt.Errorf("Invalid presence status %q: must be one of online, idle, dnd, invisible, offline", status)
 	}
 
 	payload := PresenceUpdatePayload{
@@ -606,6 +619,7 @@ func (b *Bot) SetPresence(status string) error {
 	}
 	payload.D.Status = status
 	payload.D.AFK = (status == "idle")
+	payload.D.CustomStatus = custom
 	return b.Conn.WriteJSON(payload)
 }
 
