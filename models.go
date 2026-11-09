@@ -15,19 +15,33 @@ type User struct {
 	ID             string `json:"id"`
 	Username       string `json:"username"`
 	Discriminator  string `json:"discriminator"`
+	Bio            string `json:"bio,omitempty"`
+	Pronouns       string `json:"pronouns,omitempty"`
 	Avatar         string `json:"avatar,omitempty"`
 	Bot            bool   `json:"bot"`
 	Flags          int    `json:"flags"`
 	System         bool   `json:"system"`
+	IsStaff        bool   `json:"is_staff,omitempty"`
+}
+type GuildMember struct {
+	UserID string   `json:"user"`
+	Roles  []string `json:"roles"`
+	Deaf   bool     `json:"deaf"`
+	Mute   bool     `json:"mute"`
 }
 
 type Channel struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Type    int    `json:"type"`
-	GuildID string `json:"guild_id"`
-	Topic   string `json:"topic"`
-	Nsfw    bool   `json:"nsfw"`
+	ID                string `json:"id"`
+	Name              string `json:"name"`
+	Type              int    `json:"type"`
+	GuildID           string `json:"guild_id"`
+	Topic             string `json:"topic"`
+	Nsfw              bool   `json:"nsfw"`
+	Bitrate           int    `json:"bitrate,omitempty"`
+	Position          int    `json:"position"`
+	RateLimitPerUser  int    `json:"rate_limit_per_user"`
+	UserLimit         int    `json:"user_limit,omitempty"`
+	Flags             int    `json:"flags"`
 }
 
 type GuildInfo struct {
@@ -35,6 +49,9 @@ type GuildInfo struct {
 	Name               string   `json:"name"`
 	OwnerID            string   `json:"owner_id"`
 	MemberCount        int      `json:"member_count"`
+	OnlineCount        int      `json:"online_count"`
+	ApproxMemberCount  int      `json:"approximate_member_count"`
+	ApproxOnlineCount  int      `json:"approximate_online_count"`
 	Icon               string   `json:"icon"`
 	Banner             string   `json:"banner"`
 	Permissions        string   `json:"permissions"`
@@ -43,6 +60,12 @@ type GuildInfo struct {
 	AfkTimeout         string   `json:"afk_timeout,omitempty"`
 	Vanity             string   `json:"vanity_url_code,omitempty"`
 	VerificationLevel  int      `json:"verification_level"`
+}
+
+type Role struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Permissions string `json:"permissions"`
 }
 
 type UserJoinPayload struct {
@@ -106,6 +129,17 @@ type ForwardMessageRequest struct {
 	Content          string           `json:"content,omitempty"`
 }
 
+type CreateChannelRequest struct {
+	Name             string `json:"name"`
+	Type             int    `json:"type"`
+	Topic            string `json:"topic,omitempty"`
+	Bitrate          int    `json:"bitrate,omitempty"`
+	UserLimit        int    `json:"user_limit,omitempty"`
+	RateLimitPerUser int    `json:"rate_limit_per_user,omitempty"`
+	Position         int    `json:"position,omitempty"`
+	ParentID         string `json:"parent_id,omitempty"`
+	NSFW             bool   `json:"nsfw,omitempty"`
+}
 type EditChannelRequest struct {
 	Name                 string  `json:"name,omitempty"`
 	Topic                *string `json:"topic,omitempty"`

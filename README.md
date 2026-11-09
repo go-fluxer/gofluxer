@@ -59,6 +59,16 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.6.0 - November 9th, 2026
+
+- Added PinMessage, UnpunMessage, CreateChannel, and DeleteChannel functions.
+- Added SetStatus function which is similar to SetPresense except it allows adding text to your bot's status along with a presense.
+- Added HasPermission function for adding permission checks in your bot.
+- Added serverCount to Bot struct and added GetGuildCount function for returning your bot's server count.
+- Added Bio, Pronouns, and IsStaff in User struct.
+- Added Bitrate, Position, RateLimitPerUser, UserLimit, and Flags in Channel struct
+- Added OnlineCount, ApproxMemberCount, and ApproxOnlineCount in GuildInfo struct.
+
 ### Version 0.5.1 - October 23rd, 2026
 
 - Added GetUser function for getting information about a user based on a user ID.

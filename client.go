@@ -18,25 +18,27 @@ const (
 	DefaultGatewayURL = "wss://gateway.fluxer.app/?v=1"
 )
 type Bot struct {
-	Token         string
-	CommandPrefix string
-	BaseURL       string
-	GatewayURL    string
-	EnableCache   bool
-	MaxCacheSize  int
-	Handlers      []func(m *Message)
-	Commands      map[string]func(m *Message, args []string)
-	Conn          *websocket.Conn
+	Token                 string
+	CommandPrefix         string
+	BaseURL               string
+	GatewayURL            string
+	EnableCache           bool
+	MaxCacheSize          int
+	Handlers              []func(m *Message)
+	Commands              map[string]func(m *Message, args []string)
+	Conn                  *websocket.Conn
 	ReadyHandlers         []func()
 	UserJoinHandlers      []func(u *UserJoinPayload)
 	UserLeaveHandlers     []func(l *UserLeavePayload)
 	MessageDeleteHandlers []func(d *MessageDeletePayload)
 	MessageUpdateHandlers []func(e *MessageUpdatePayload)
 	ReactionAddHandlers   []func(e *MessageReactionPayload)
-	messageCache  map[string]Message
-	cacheOrder    []string
-	cacheMutex    sync.RWMutex
+	messageCache          map[string]Message
+	cacheOrder            []string
+	cacheMutex            sync.RWMutex
 	identifyProperties    map[string]string
+	guildsMu              sync.RWMutex
+	guildsCount           int
 }
 
 func NewBot(token, prefix string) *Bot {
@@ -171,6 +173,19 @@ func (b *Bot) ReplyMessage(m *Message, content string) {
 		resp.Body.Close()
 	}
 }
+func SanitizeContent(content string) string {
+	content = strings.ReplaceAll(content, "@everyone", "@\u200beveryone")
+	content = strings.ReplaceAll(content, "@here", "@\u200bhere")
+	return content
+}
+func (b *Bot) SendMessageClean(channelID string, content string) {
+	cleanContent := SanitizeContent(content)
+	b.SendMessage(channelID, cleanContent)
+}
+func (b *Bot) ReplyMessageClean(m *Message, content string) {
+	cleanContent := SanitizeContent(content)
+	b.ReplyMessage(m, cleanContent)
+}
 func (b *Bot) EditMessage(channelID, messageID, newContent string, embeds []interface{}) (*Message, error) {
 	url := fmt.Sprintf("%s/channels/%s/messages/%s", b.BaseURL, channelID, messageID)
 	payload := MessageUpdateRequest{
@@ -230,7 +245,6 @@ func (b *Bot) DeleteMessage(channelID, messageID string) error {
 
 	return nil
 }
-
 func (b *Bot) SendEmbed(channelID string, embed interface{}) {
 	body, _ := json.Marshal(map[string]interface{}{"embeds": []interface{}{embed}})
 	req, _ := http.NewRequest("POST", fmt.Sprintf("%s/channels/%s/messages", b.BaseURL, channelID), bytes.NewBuffer(body))
@@ -253,20 +267,6 @@ func (b *Bot) AddReaction(channelID, messageID, emoji string) {
 		b.checkRateLimit(resp.StatusCode)
 		resp.Body.Close()
 	}
-}
-
-func SanitizeContent(content string) string {
-	content = strings.ReplaceAll(content, "@everyone", "@\u200beveryone")
-	content = strings.ReplaceAll(content, "@here", "@\u200bhere")
-	return content
-}
-func (b *Bot) SendMessageClean(channelID string, content string) {
-	cleanContent := SanitizeContent(content)
-	b.SendMessage(channelID, cleanContent)
-}
-func (b *Bot) ReplyMessageClean(m *Message, content string) {
-	cleanContent := SanitizeContent(content)
-	b.ReplyMessage(m, cleanContent)
 }
 
 func (b *Bot) ForwardMessage(targetChannelID string, origGuildID, origChannelID, origMessageID string, comment string) (*Message, error) {
@@ -310,6 +310,86 @@ func (b *Bot) ForwardMessage(targetChannelID string, origGuildID, origChannelID,
 	return &msg, nil
 }
 
+func (b *Bot) PinMessage(channelID, messageID string) error {
+	url := fmt.Sprintf("%s/channels/%s/pins/%s", b.BaseURL, channelID, messageID)
+
+	req, err := http.NewRequest("PUT", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to pin message, status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+func (b *Bot) UnpinMessage(channelID, messageID string) error {
+	url := fmt.Sprintf("%s/channels/%s/pins/%s", b.BaseURL, channelID, messageID)
+
+	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("failed to unpin message, status code: %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (b *Bot) CreateChannel(guildID string, req CreateChannelRequest) (*Channel, error) {
+	url := fmt.Sprintf("%s/guilds/%s/channels", b.BaseURL, guildID)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal create channel payload: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Bot "+b.Token)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		var errBody map[string]interface{}
+		_ = json.NewDecoder(resp.Body).Decode(&errBody)
+		return nil, fmt.Errorf("create channel failed (status %d): %v", resp.StatusCode, errBody)
+	}
+
+	var newChannel Channel
+	if err := json.NewDecoder(resp.Body).Decode(&newChannel); err != nil {
+		return nil, err
+	}
+
+	return &newChannel, nil
+}
 func (b *Bot) EditChannel(channelID string, req EditChannelRequest) (*Channel, error) {
 	url := fmt.Sprintf("%s/channels/%s", b.BaseURL, channelID)
 
@@ -340,6 +420,31 @@ func (b *Bot) EditChannel(channelID string, req EditChannelRequest) (*Channel, e
 		return nil, err
 	}
 	return &updatedChannel, nil
+}
+func (b *Bot) DeleteChannel(channelID string) (*Channel, error) {
+	url := fmt.Sprintf("%s/channels/%s", b.BaseURL, channelID)
+
+	httpReq, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Authorization", "Bot "+b.Token)
+
+	resp, err := http.DefaultClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	b.checkRateLimit(resp.StatusCode)
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return nil, fmt.Errorf("delete channel failed with status code: %d", resp.StatusCode)
+	}
+
+	var deletedChannel Channel
+	_ = json.NewDecoder(resp.Body).Decode(&deletedChannel)
+
+	return &deletedChannel, nil
 }
 
 func (b *Bot) StartThreadFromMessage(channelID, messageID, name string, autoArchiveMinutes int) (*Channel, error) {
@@ -511,7 +616,6 @@ func (b *Bot) AddRole(guildID, userID, roleID string) error {
 	}
 	return nil
 }
-
 func (b *Bot) RemoveRole(guildID, userID, roleID string) error {
 	url := fmt.Sprintf("%s/guilds/%s/members/%s/roles/%s", b.BaseURL, guildID, userID, roleID)
 	req, _ := http.NewRequest("DELETE", url, nil)
@@ -527,7 +631,6 @@ func (b *Bot) RemoveRole(guildID, userID, roleID string) error {
 	}
 	return nil
 }
-
 func (b *Bot) TimeoutMember(guildID, userID string, durationSeconds int, reason string) error {
 	expiration := time.Now().Add(time.Duration(durationSeconds) * time.Second).Format(time.RFC3339)
 	payload := map[string]interface{}{
@@ -623,6 +726,11 @@ func (b *Bot) SetStatus(status string, custom *CustomStatus) error {
 	return b.Conn.WriteJSON(payload)
 }
 
+func (b *Bot) GetGuildCount() int {
+	b.guildsMu.RLock()
+	defer b.guildsMu.RUnlock()
+	return b.guildsCount
+}
 // NOTE: IsBotInGuild is intended for use with the oauth2 system introduced in v0.4.0
 func (b *Bot) IsBotInGuild(guildID string) bool {
 	_, err := b.GetGuild(guildID)
@@ -775,6 +883,16 @@ func (b *Bot) listen(conn *websocket.Conn) error {
 				for _, h := range b.ReactionAddHandlers {
 					go h(&mr)
 				}
+			case "GUILD_CREATE":
+				b.guildsMu.Lock()
+				b.guildsCount++
+				b.guildsMu.Unlock()
+			case "GUILD_DELETE":
+				b.guildsMu.Lock()
+				if b.guildsCount > 0 {
+					b.guildsCount--
+				}
+				b.guildsMu.Unlock()
 			}
 		}
 	}
