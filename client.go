@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	DefaultBaseURL    = "https://api.fluxer.app/v1"
-	DefaultGatewayURL = "wss://gateway.fluxer.app/?v=1"
+	DefaultBaseURL    = "https://fluxer.com/api/v1"
+	DefaultGatewayURL = "wss://gateway.fluxer.com/?v=1"
 )
 type Bot struct {
 	Token                 string
@@ -64,6 +64,50 @@ func (b *Bot) NewBotConfig(enableCache bool, maxCacheSize int) {
 	} else {
 		b.MaxCacheSize = maxCacheSize
 	}
+}
+func NewBotFromDomain(domain, token, prefix string) (*Bot, error) {
+	wellKnownURL := fmt.Sprintf("%s/.well-known/fluxer", domain)
+
+	resp, err := http.Get(wellKnownURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch well-known configuration: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("well-known discovery failed with status code: %d", resp.StatusCode)
+	}
+
+	var data WellKnown
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to decode well-known response: %w", err)
+	}
+
+	baseURL := strings.TrimSuffix(data.Endpoints.APIPublic, "/") + "/v1"
+	gatewayURL := strings.TrimSuffix(data.Endpoints.Gateway, "/") + "/?v=1"
+	bot := NewBot(token, prefix)
+	bot.BaseURL = baseURL
+	bot.GatewayURL = gatewayURL
+
+	return bot, nil
+}
+func GetInstance(domain string) (*WellKnown, error) {
+	url := fmt.Sprintf("%s/.well-known/fluxer", domain)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch instance info: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("instance info request failed with status code: %d", resp.StatusCode)
+	}
+
+	var info WellKnown
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("failed to decode instance info: %w", err)
+	}
+
+	return &info, nil
 }
 
 

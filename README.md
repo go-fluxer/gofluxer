@@ -59,9 +59,15 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.6.1 - November 14th, 2026
+
+- Changed the default base url and gateway url to use the new fluxer.com domain instead of the fluxer.app domain.
+- Added a new bot function called NewBotFromDomain which is like NewBot but you can input a domain and it will check /.well-known/fluxer and put in the API url and gateway url automatically (The NewBot function will remain untouched).
+- Added GetInstance function.
+
 ### Version 0.6.0 - November 9th, 2026
 
-- Added PinMessage, UnpunMessage, CreateChannel, and DeleteChannel functions.
+- Added PinMessage, UnpinMessage, CreateChannel, and DeleteChannel functions.
 - Added SetStatus function which is similar to SetPresense except it allows adding text to your bot's status along with a presense.
 - Added HasPermission function for adding permission checks in your bot.
 - Added serverCount to Bot struct and added GetGuildCount function for returning your bot's server count.

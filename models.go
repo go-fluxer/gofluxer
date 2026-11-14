@@ -189,6 +189,25 @@ type PresenceUpdatePayload struct {
 		CustomStatus *CustomStatus `json:"custom_status,omitempty"`
 	} `json:"d"`
 }
+type WellKnownEndpoints struct {
+	API       string `json:"api"`
+	APIClient string `json:"api_client"`
+	APIPublic string `json:"api_public"`
+	Gateway   string `json:"gateway"`
+	Media     string `json:"media"`
+	Gift      string `json:"gift"`
+	Invite    string `json:"invite"`
+}
+type WellKnownFeatures struct {
+	Voice     bool `json:"voice_enabled"`
+	Stripe    bool `json:"stripe_enabled"`
+	Discovery bool `json:"discovery_enabled"`
+}
+type WellKnown struct {
+	APICodeVersion int                `json:"api_code_version"`
+	Endpoints      WellKnownEndpoints `json:"endpoints"`
+	Features       WellKnownFeatures  `json:"features"`
+}
 
 
 
