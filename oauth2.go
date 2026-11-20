@@ -20,12 +20,12 @@ func NewOAuth(clientID, clientSecret, redirectURI string) *OAuthClient {
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		RedirectURI:  redirectURI,
-		BaseURL:      "https://api.fluxer.app/v1",
+		BaseURL:      "https://fluxer.com/api/v1",
 	}
 }
 
 func (o *OAuthClient) GetLoginURL(scopes []string) string {
-	return fmt.Sprintf("https://fluxer.app/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=%s", o.ClientID, url.QueryEscape(o.RedirectURI), url.QueryEscape(bytes.NewBufferString("").String()))
+	return fmt.Sprintf("https://fluxer.com/oauth2/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=%s", o.ClientID, url.QueryEscape(o.RedirectURI), url.QueryEscape(bytes.NewBufferString("").String()))
 }
 
 func (o *OAuthClient) AuthCode(code string) (*TokenResponse, error) {

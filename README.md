@@ -59,6 +59,12 @@ You can refer to the examples directory for more examples to see how to use this
 
 # gofluxer Update Notes:
 
+### Version 0.6.2 - November 20th, 2026
+
+- Changed the default base url and gateway url to use the new fluxer.com domain instead of the fluxer.app domain on the oauth2 system since I forgot to do that in the previous release.
+- Edited the logging for the new functions added in v0.6.1.
+- Removed some built-in startup logging.
+
 ### Version 0.6.1 - November 14th, 2026
 
 - Changed the default base url and gateway url to use the new fluxer.com domain instead of the fluxer.app domain.

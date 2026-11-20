@@ -70,7 +70,7 @@ func NewBotFromDomain(domain, token, prefix string) (*Bot, error) {
 
 	resp, err := http.Get(wellKnownURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch well-known configuration: %w", err)
+		return nil, fmt.Errorf("Fetching well-known configuration failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -79,7 +79,7 @@ func NewBotFromDomain(domain, token, prefix string) (*Bot, error) {
 
 	var data WellKnown
 	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
-		return nil, fmt.Errorf("failed to decode well-known response: %w", err)
+		return nil, fmt.Errorf("well-known response decoding failed: %w", err)
 	}
 
 	baseURL := strings.TrimSuffix(data.Endpoints.APIPublic, "/") + "/v1"
@@ -95,16 +95,16 @@ func GetInstance(domain string) (*WellKnown, error) {
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch instance info: %w", err)
+		return nil, fmt.Errorf("Fetching instance failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("instance info request failed with status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("Get instance request failed with status code: %d", resp.StatusCode)
 	}
 
 	var info WellKnown
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return nil, fmt.Errorf("failed to decode instance info: %w", err)
+		return nil, fmt.Errorf("Fetching instance decoding failed: %w", err)
 	}
 
 	return &info, nil
@@ -785,8 +785,7 @@ func (b *Bot) IsBotInGuild(guildID string) bool {
 
 func (b *Bot) Run() error {
 	for {
-		fmt.Println("[gofluxer]: Attempting to connect to Fluxer Gateway...")
-		fmt.Printf("[gofluxer]: Connecting to %s...\n", b.GatewayURL)
+		fmt.Println("[gofluxer]: Attempting to connect to Fluxer Gateway... Connecting to %s...", b.GatewayURL)
 		conn, _, err := websocket.DefaultDialer.Dial(b.GatewayURL, nil)
 		if err != nil {
 			fmt.Printf("[gofluxer]: Connection failed: %v. Retrying in 5 seconds...\n", err)
@@ -795,7 +794,7 @@ func (b *Bot) Run() error {
 		}
 
 		b.Conn = conn
-		fmt.Println("[gofluxer]: Connected to Fluxer")
+		// fmt.Println("[gofluxer]: Connected to Fluxer")
 		err = b.listen(conn)
 		fmt.Printf("[gofluxer]: Connection lost: %v. Reconnecting...\n", err)
 		conn.Close()
